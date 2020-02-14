@@ -17,6 +17,7 @@
 package kafka
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
@@ -686,4 +687,96 @@ func (p *Producer) SetOAuthBearerToken(oauthBearerToken OAuthBearerToken) error 
 // authentication mechanism.
 func (p *Producer) SetOAuthBearerTokenFailure(errstr string) error {
 	return p.handle.setOAuthBearerTokenFailure(errstr)
+}
+
+// Transactional API
+
+// InitTransactions ..
+func (p *Producer) InitTransactions(ctx context.Context) error {
+	cErrstrSize := C.size_t(512)
+	cErrstr := (*C.char)(C.malloc(cErrstrSize))
+	defer C.free(unsafe.Pointer(cErrstr))
+
+	cErr := C.rd_kafka_init_transactions(p.handle.rk,
+		cTimeoutFromContext(ctx),
+		cErrstr, cErrstrSize)
+	if cErr != 0 {
+		return newErrorFromCString(cErr, cErrstr)
+	}
+
+	return nil
+}
+
+// BeginTransaction ..
+func (p *Producer) BeginTransaction() error {
+	cErrstrSize := C.size_t(512)
+	cErrstr := (*C.char)(C.malloc(cErrstrSize))
+	defer C.free(unsafe.Pointer(cErrstr))
+
+	cErr := C.rd_kafka_begin_transaction(p.handle.rk, cErrstr, cErrstrSize)
+	if cErr != 0 {
+		return newErrorFromCString(cErr, cErrstr)
+	}
+
+	return nil
+}
+
+// SendOffsetsToTransaction ..
+func (p *Producer) SendOffsetsToTransaction(ctx context.Context, offsets []TopicPartition, consumerGroupID string) error {
+	cErrstrSize := C.size_t(512)
+	cErrstr := (*C.char)(C.malloc(cErrstrSize))
+	defer C.free(unsafe.Pointer(cErrstr))
+
+	cGroupID := C.CString(consumerGroupID)
+	defer C.free(unsafe.Pointer(cGroupID))
+
+	var cOffsets *C.rd_kafka_topic_partition_list_t
+	if offsets != nil {
+		cOffsets = newCPartsFromTopicPartitions(offsets)
+		defer C.rd_kafka_topic_partition_list_destroy(cOffsets)
+	}
+
+	cErr := C.rd_kafka_send_offsets_to_transaction(
+		p.handle.rk,
+		cOffsets,
+		cGroupID,
+		cTimeoutFromContext(ctx),
+		cErrstr, cErrstrSize)
+	if cErr != 0 {
+		return newErrorFromCString(cErr, cErrstr)
+	}
+
+	return nil
+}
+
+// CommitTransaction ..
+func (p *Producer) CommitTransaction(ctx context.Context) error {
+	cErrstrSize := C.size_t(512)
+	cErrstr := (*C.char)(C.malloc(cErrstrSize))
+	defer C.free(unsafe.Pointer(cErrstr))
+
+	cErr := C.rd_kafka_commit_transaction(p.handle.rk,
+		cTimeoutFromContext(ctx),
+		cErrstr, cErrstrSize)
+	if cErr != 0 {
+		return newErrorFromCString(cErr, cErrstr)
+	}
+
+	return nil
+}
+
+// AbortTransaction ..
+func (p *Producer) AbortTransaction(ctx context.Context) error {
+	cErrstrSize := C.size_t(512)
+	cErrstr := (*C.char)(C.malloc(cErrstrSize))
+	defer C.free(unsafe.Pointer(cErrstr))
+
+	cErr := C.rd_kafka_abort_transaction(p.handle.rk,
+		cTimeoutFromContext(ctx),
+		cErrstr, cErrstrSize)
+	if cErr != 0 {
+		return newErrorFromCString(cErr, cErrstr)
+	}
+
+	return nil
 }
